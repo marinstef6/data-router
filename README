@@ -1,0 +1,97 @@
+In aceasta tema am avut de implementat un Dataplane router.
+Am implementat mai multe functii care m-au ajutat sa fac acest lucru.
+
+Functia LPM cauta cea mai lunga potrivire a prefixului pentru o adresa IP ca
+intrare in tabela de rutare.Incep de la radacina arborelui si parcurg arborele pana 
+cand gasesc nodul care reprezinta cea mai buna potrivire si returnez intrarea 
+de rutare corespunzatoare.
+
+Functia get_mask_length calculeaza lungimea unei masti de retea.Aceasta initiaza un contor 
+length la 0 si cu ajutorul while-ului verifica daca bitul cel mai putin semnificativ este
+setat la 1 si daca este il incrementez si il deplasez la dreapta cu 1 bit.Voi continua
+pana cand bitul nu mai este 1 si voi returna lungimea mastii.
+
+Functia entry_mac cauta intr-o tabela ARP pentru a gasi intrarea corespunzatoare
+adresei IP de destinatie. Aceasta parcurge tabela ARP si verifica daca adresa IP 
+de destinatie este egala cu adresa IP a intrarii curente.
+Daca este egala atunci va returna un pointer catre acea intrare din tabela ARP.
+Daca nu gaseste va returna NULL.
+
+Functia build_send construieste si trimite un pachet de date. Ea are ca parametri
+antetele Ethernet si IP ale pachetului un buffer si lungimea totala.
+Voi copia antetul Ethernet la inceputul array-ului packet apoi voi
+copia si antetul IP. Voi calcula lungimea datelor payload si voi copia payload-ul
+in packet, iar la final voi trimite pachetul prin retea.
+
+Functia build_ip va schimba adresa IP sursa si destinatie, seteaza TTL-ul, protocolul,
+lungimea totala si initializeaza checksum-ul si apoi il va calcula.
+
+Functia build_icmp_packet construieste si trimite un pachet ICMP.
+Copiaza antetul ICMP din icm in icmp si adauga o portiune de date din buf.
+Calculeaza checksum-ul si apoi construieste pachetul final prin 
+crearea unui buffer packet, copierea antetului Ethernet si IP si ICMP formand
+headerul pachetului si la final il va trimite.
+
+Functia send_icmp construieste si trimite un pachet ICMP.Construieste antetul IP
+apoi cauta cea mai buna potrivitre in tabela de rutare. Aloca si initializeaza
+antetul ICMP setand code la 0. Tipul mesajului ICMP este dat de parametrul err
+care poate fi TIME_EXCEEDED iar tipul ICMP va fi setat la 11 sau DESTINATION_UNREACHABLE
+iar tipul va fi setat la 3.La final construieste pachetul si il va trimite.
+Astfel functia este utilizata pentru a raspunde la diverse situatii de eroare generand
+si trimitand un mesaj ICMP.
+
+Functia icmp_reply construieste si trimite un raspuns ICMP ca reactie la 
+un pachet ICMP primit. Functia are un buffer care contine un pachet primit,
+antetele Ethernet si IP si mesajul ICMP.
+Va extrage antetele din buffer obtinand un pointer catre antetul ICMP dar si IP.
+Va folosi adresa IP si va cauta in tabela de rutare cea mai buna potrivire 
+pentru a vedea cum va raspunde. 
+Gaseste adresa MAC a urmatorului hop folosind entry_mac, lucru care ne ajuta
+sa setam adresa MAC sursa si destinatie a pachetului de raspuns.
+Dupa ce seteaza adresa MAC de destinatie si configureaza antetul ICMP initializand
+tipul si codul mesajului cu 0, va trimite pachetul folosindu-se de functia send_to_link.
+
+Functia generate_arp_reply construieste si trimite un raspuns ARP ca reactie
+la un pachet ARP primit. Astfel, ea va cauta in tabela de rutare folosind adresa IP
+pentru a gasi cea mai buna potrivire, va pregati pachetul ARP de raspuns, alocand un buffer
+arp_reply_pachet si initializeaza antetele Ethernet si ARP.
+Va configura antetele Ethernet obtinad adresa MAC, o seteaza ca sursa si apoi 
+o va copia din antetul Ethernet ca destinatie.
+Construieste antetul ARP ca raspuns si la final va trimite pachetul.
+
+Functia resend_packet va retrimite un pachet care a fost primit si a fost stocat in buffer.
+
+Functia iterate_through_queue parcurge o coada de pachete si incearca sa le 
+restransmita. Astfel va extrage pachetul din coada, va determina ruta, verifica adresa MAC,
+iar la finalul iteratiei, numara pachetele care nu au putut fi retrimise si actualizeaza
+lungimea cozii cu acest numar.
+
+Functia generate_arp_request construieste si trimite o cerere ARP.
+Ea va verifica intrarea din tabela de rutare, construieste antetul ARP si Ethernet copiind
+adresa MAC sursa din Ethernet, seteaza adresa IP sursa la adresa IP a interfetei de retea
+specificate in intrarea de rutare si va seta adresa hardware destinatie la 0, deoarece
+adresa MAC nu este cunoscuta inca. La final dupa ce pachetul este complet il va trimite.
+
+Functia queue_func adauga un pachet in coada de asteptare pentru a fi procesat sau 
+transmis ulterior. Astfel aceasta functie permite stocarea temporara a pachetelor.
+
+Functia main este functia principala a programului. Aici voi initializa variabilele si
+voi pune structurile de date necesare cum ar fi o coada, o tabela de rutare, o tabela de adrese
+MAC si un trie pentru a cauta mai rapid prin tabela.
+Aici se vor trimite pachete si vom avea mai multe cazuri. Daca este un ARP request 
+atunci vom rapsunde cu o adresa MAC. Daca este un pachet IP vom verifica checksum-ul
+si TTL-ul. Pentru pachetele IP vom verifica daca adresa IP trimite un pachet ICMP de tip reply.
+Daca nu exista o intrare corespunzatoare atunci vom trimite un pachet ICMP de tipul
+DESTINATION_UNREACHABLE.Iar daca exista o ruta in tabela pentru destinatia pachetului
+atunci voi verifica tabela ARP pentru adresa MAC corespunzatoare.
+Daca adresa MAC nu este cunoscuta atunci pachetul este pus in coada, altfel trimis la destinatie.
+
+In fisierul trie.c am implementat 2 functii.Am folosit trie pentru ca este mult mai eficient.
+Functia create este utilizata pentru a crea un nod 
+nou in trie. Voi initializa si returna o referinta catre acesta.
+Iar functia insert_node_trie va insera un nod in trie bazandu-se pe adresa IP si lungimea mastii.
+Voi parcurge arborele de la radacina pana la nodul corespunzator si voi insera nodul daca acestea
+nu exista deja.
+La final cand s-a ajuns unde trebuie in arbore, voi introduce nodul cu informatia corespunzatoare.
+Voi marca nodul inserat ca fiind o frunza pentru a indica ca acesta este un nod terminal in arbore,
+iar la final voi returna trie-ul.
